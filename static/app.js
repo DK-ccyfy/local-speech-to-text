@@ -25,7 +25,8 @@ const els = {
   metaLanguage: $("metaLanguage"), metaDuration: $("metaDuration"),
   metaProcessing: $("metaProcessing"),
   btnCopy: $("btnCopy"), copyHint: $("copyHint"),
-  errorBox: $("errorBox"), errorMessage: $("errorMessage"), btnRetry: $("btnRetry"),
+  errorBox: $("errorBox"), errorMessage: $("errorMessage"),
+  btnRetry: $("btnRetry"), btnCloseError: $("btnCloseError"),
   modelStatus: $("modelStatus"),
 };
 
@@ -65,13 +66,18 @@ function setBusy(busy) {
   els.btnUpload.disabled = busy;
 }
 
+let errorDismissTimer = null;
+
 function showError(message, canRetry = false) {
   els.errorMessage.textContent = message;
   els.errorBox.hidden = false;
   els.btnRetry.hidden = !canRetry;
+  clearTimeout(errorDismissTimer);
+  errorDismissTimer = setTimeout(hideError, 10000); // auto-dismiss, × or retry keeps flow simple
 }
 
 function hideError() {
+  clearTimeout(errorDismissTimer);
   els.errorBox.hidden = true;
   els.btnRetry.hidden = true;
 }
@@ -232,13 +238,14 @@ async function stopRecording(auto = false) {
   clearInterval(state.realtimeInterval);
   state.timerInterval = state.realtimeInterval = null;
 
-  // teardown audio graph
+  // teardown audio graph. close() is NOT awaited: on some Chrome versions the
+  // promise can hang, and it must never block the stop→recognize flow.
   try { state.sourceNode && state.sourceNode.disconnect(); } catch (_) {}
   try { state.workletNode && state.workletNode.disconnect(); } catch (_) {}
   try { state.muteNode && state.muteNode.disconnect(); } catch (_) {}
   if (state.mediaStream) state.mediaStream.getTracks().forEach((t) => t.stop());
   if (state.audioCtx && state.audioCtx.state !== "closed") {
-    try { await state.audioCtx.close(); } catch (_) {}
+    try { state.audioCtx.close().catch(() => {}); } catch (_) {}
   }
 
   const duration = state.totalSamples / SAMPLE_RATE;
@@ -259,8 +266,14 @@ async function stopRecording(auto = false) {
   setMicStatus(auto ? `已达 60 秒上限，自动结束（${duration.toFixed(1)} 秒）` : `已停止（${duration.toFixed(1)} 秒）`);
   setBadge("working", "识别中");
 
-  const blob = encodeWav(concatChunks(), SAMPLE_RATE);
-  await submitAudio(blob, "recording.wav");
+  try {
+    const blob = encodeWav(concatChunks(), SAMPLE_RATE);
+    await submitAudio(blob, "recording.wav");
+  } catch (err) {
+    setBadge("error", "识别失败");
+    showError(`录音处理失败：${(err && err.message) || err}`);
+    setBusy(false);
+  }
 }
 
 /* ------------------------------------------------------- realtime preview */
@@ -398,6 +411,7 @@ els.btnStart.addEventListener("click", startRecording);
 els.btnStop.addEventListener("click", () => stopRecording(false));
 els.btnUpload.addEventListener("click", uploadChosenFile);
 els.btnCopy.addEventListener("click", copyResult);
+els.btnCloseError.addEventListener("click", hideError);
 els.btnRetry.addEventListener("click", () => {
   if (state.lastJob) submitAudio(state.lastJob.blob, state.lastJob.filename);
 });
