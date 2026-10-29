@@ -50,6 +50,46 @@ const state = {
 };
 
 /* ------------------------------------------------------------- ui helpers */
+/* ------------------------------------------------------------- diagnostics */
+/* Open the page with ?debug=1 to show a live event trail (bottom-right box).
+   It records every click target + recording-state transitions, so a single
+   screenshot pins down any "button does nothing" report. */
+const DEBUG_MODE = new URLSearchParams(location.search).has("debug");
+const debugTrail = [];
+
+function dbg(message) {
+  if (!DEBUG_MODE) return;
+  debugTrail.unshift(`${new Date().toLocaleTimeString()} ${message}`);
+  if (debugTrail.length > 14) debugTrail.pop();
+}
+
+function renderDebugPanel() {
+  if (!DEBUG_MODE) return;
+  let panel = document.getElementById("debugPanel");
+  if (!panel) {
+    panel = document.createElement("div");
+    panel.id = "debugPanel";
+    document.body.appendChild(panel);
+  }
+  panel.textContent = [
+    `flags starting=${state.starting} recording=${state.recording} recognizing=${state.recognizing}`,
+    `audio ${state.totalSamples} samples (${(state.totalSamples / SAMPLE_RATE).toFixed(1)}s) timerOn=${!!state.timerInterval}`,
+    ...debugTrail,
+  ].join("\n");
+}
+
+if (DEBUG_MODE) {
+  document.addEventListener(
+    "click",
+    (e) => {
+      const t = e.target;
+      dbg(`click → ${t.id || t.tagName}${t.className ? "." + String(t.className).split(" ")[0] : ""}`);
+    },
+    true
+  );
+  setInterval(renderDebugPanel, 500);
+}
+
 function setBadge(name, label) {
   els.stateBadge.className = `badge ${name}`;
   els.stateBadge.textContent = label;
@@ -70,6 +110,7 @@ function setBusy(busy) {
 let errorDismissTimer = null;
 
 function showError(message, canRetry = false) {
+  dbg(`error shown: ${message.slice(0, 70)}`);
   els.errorMessage.textContent = message;
   els.errorBox.hidden = false;
   els.btnRetry.hidden = !canRetry;
@@ -152,10 +193,14 @@ async function startRecording() {
   // while the first is still awaiting getUserMedia (state.recording not yet
   // set), which would start two audio pipelines and one stop click could
   // only tear down the second one — leaving the UI "recording" forever.
-  if (state.recording || state.recognizing || state.starting) return;
+  if (state.recording || state.recognizing || state.starting) {
+    dbg("start BLOCKED: already starting/recording");
+    return;
+  }
   state.starting = true;
   hideError();
   els.btnStart.disabled = true; // close the double-click window immediately
+  dbg("start accepted");
 
   try {
     if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
@@ -239,14 +284,19 @@ async function startRecording() {
     }, 100);
 
     state.realtimeInterval = setInterval(recognizePartial, REALTIME_INTERVAL_MS);
+    dbg("recording pipeline started");
   } finally {
     state.starting = false;
   }
 }
 
 async function stopRecording(auto = false) {
-  if (!state.recording) return;
+  if (!state.recording) {
+    dbg(`stop IGNORED: not recording (auto=${auto})`);
+    return;
+  }
   state.recording = false;
+  dbg(`stop accepted (auto=${auto})`);
 
   clearInterval(state.timerInterval);
   clearInterval(state.realtimeInterval);
@@ -282,6 +332,7 @@ async function stopRecording(auto = false) {
 
   try {
     const blob = encodeWav(concatChunks(), SAMPLE_RATE);
+    dbg("pipeline torn down; submitting final audio");
     await submitAudio(blob, "recording.wav");
   } catch (err) {
     setBadge("error", "识别失败");
@@ -350,6 +401,7 @@ async function submitAudio(blob, filename) {
   try {
     const data = await postTranscribe(blob, filename);
     const text = (data.text || "").trim();
+    dbg(`submit ok (${data.processing_seconds}s, text ${text.length} chars)`);
     els.resultText.value = text || "（未识别到语音内容）";
     els.metaLanguage.textContent = languageLabel(data.language);
     els.metaDuration.textContent = `${data.duration_seconds} 秒`;
