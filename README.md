@@ -89,7 +89,7 @@ python -m pytest -q
 python -m pytest -q -m realmodel
 ```
 
-- 常规套件使用注入的 Mock ASR 服务，覆盖 HTTP API、音频处理（含 WebM）、语言参数、错误处理、前端资源等 **41 个用例**；
+- 常规套件使用注入的 Mock ASR 服务，覆盖 HTTP API、音频处理（含 WebM）、语言参数、错误处理、前端资源等 **42 个用例**；
 - 真实模型套件使用 `samples/chinese.wav`、`samples/english.wav` 验证中英文识别、自动语言检测与完整 HTTP 链路；
 - 样本音频由 `scripts/make_samples.sh`（macOS TTS）自主生成，可自由分发，参考文本见 `samples/reference.txt`。
 

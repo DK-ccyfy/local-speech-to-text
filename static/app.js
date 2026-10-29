@@ -200,6 +200,15 @@ async function startRecording() {
 
   setBadge("recording", "录音中");
   setMicStatus("录音中", "recording");
+  // fresh session: clear the previous result so stale text can't be mistaken
+  // for this recording's outcome
+  els.resultText.value = "";
+  els.resultText.placeholder = "识别文本将显示在这里…";
+  els.metaLanguage.textContent = "-";
+  els.metaDuration.textContent = "-";
+  els.metaProcessing.textContent = "-";
+  els.copyHint.textContent = "";
+  els.btnCopy.disabled = true;
   els.btnStart.disabled = true;
   els.btnStop.disabled = false;
   els.btnUpload.disabled = true;
@@ -261,7 +270,8 @@ async function recognizePartial() {
   try {
     const blob = encodeWav(concatChunks(), SAMPLE_RATE);
     const data = await postTranscribe(blob, "recording.wav");
-    if (data && data.text) {
+    const text = ((data && data.text) || "").trim();
+    if (text) {
       els.resultText.value = data.text + "\n（实时预览，录音结束后给出最终结果）";
       setBadge("recording", "录音中·实时识别");
       els.metaLanguage.textContent = languageLabel(data.language);
@@ -312,11 +322,12 @@ async function submitAudio(blob, filename) {
   setBadge("working", "识别中");
   try {
     const data = await postTranscribe(blob, filename);
-    els.resultText.value = data.text || "（未识别到语音内容）";
+    const text = (data.text || "").trim();
+    els.resultText.value = text || "（未识别到语音内容）";
     els.metaLanguage.textContent = languageLabel(data.language);
     els.metaDuration.textContent = `${data.duration_seconds} 秒`;
     els.metaProcessing.textContent = `${data.processing_seconds} 秒`;
-    els.btnCopy.disabled = !data.text;
+    els.btnCopy.disabled = !text;
     els.copyHint.textContent = "";
     setBadge("done", "识别完成");
     setMicStatus("空闲");

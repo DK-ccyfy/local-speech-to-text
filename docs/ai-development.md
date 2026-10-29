@@ -46,6 +46,7 @@
 | 4 | Chrome 只调度连接到 destination 的音频节点，Worklet 若不连 destination 会收不到数据；直连又会回放麦克风产生啸叫 | Worklet → 增益 0 节点 → destination：保持数据流且静音 |
 | 5 | 识别推理若在事件循环内执行会阻塞 /health | 解码与推理均经 `run_in_threadpool` 执行 |
 | 6 | 浏览器实测时服务端模型长时间停在 loading：已缓存模型仍尝试联网校验版本，直连 HF 超时拖住加载线程 | 重构加载策略为「离线优先」：先 `local_files_only=True` 用缓存秒级加载，未命中才联网下载；补 3 个单测锁定该行为，并用 `HF_HUB_OFFLINE=1` 实机验证断网可用 |
+| 7 | 用户手动测试反馈「权限拒绝无提示、沉默录音像报错、旧结果不清空」：排查发现 `.error-box` 的 `display:flex` 覆盖了 HTML `hidden` 属性（作者样式优先于 UA 样式），错误框从加载起常驻显示，掩盖了正常错误提示并让成功状态看起来像出错 | 全局增加 `[hidden]{display:none!important}` 并加回归测试；开始新录音时清空上一轮结果；空文本 trim 后再判断占位提示；静态资源加 `?v=` 版本号规避浏览器缓存旧 CSS |
 
 **如何确认 AI 生成代码满足需求：**
 - 每阶段用 `python -m pytest -q` 回归（37 用例全绿）；

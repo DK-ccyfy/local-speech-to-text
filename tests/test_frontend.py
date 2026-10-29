@@ -29,3 +29,10 @@ def test_app_js_uses_required_api_and_limits(client):
     assert "MAX_SECONDS = 60" in js
     assert "getUserMedia" in js
     assert "NotAllowedError" in js  # permission-denied hint
+
+
+def test_error_box_hidden_attribute_actually_hides(client):
+    """Regression: author `display:flex` used to defeat the HTML hidden attribute,
+    leaving a permanent empty red box on the page."""
+    css = client.get("/static/style.css").text
+    assert "[hidden]" in css and "display: none" in css
