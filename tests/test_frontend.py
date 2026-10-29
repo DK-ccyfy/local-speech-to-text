@@ -29,6 +29,9 @@ def test_app_js_uses_required_api_and_limits(client):
     assert "MAX_SECONDS = 60" in js
     assert "getUserMedia" in js
     assert "NotAllowedError" in js  # permission-denied hint
+    # synchronous re-entry guard: a double-clicked 开始录音 must not start
+    # two audio pipelines (second one could never be stopped)
+    assert "state.starting" in js
 
 
 def test_error_box_hidden_attribute_actually_hides(client):

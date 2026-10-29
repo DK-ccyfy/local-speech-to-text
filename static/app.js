@@ -33,6 +33,7 @@ const els = {
 /* ------------------------------------------------------------------ state */
 const state = {
   recording: false,
+  starting: false,        // synchronous re-entry guard for startRecording
   recognizing: false,     // 一次最终识别请求进行中
   audioCtx: null,
   mediaStream: null,
@@ -147,87 +148,100 @@ function onPcmChunk(chunk) {
 }
 
 async function startRecording() {
-  if (state.recording || state.recognizing) return;
+  // Re-entry guard must be SYNCHRONOUS: a double-click fires a second call
+  // while the first is still awaiting getUserMedia (state.recording not yet
+  // set), which would start two audio pipelines and one stop click could
+  // only tear down the second one — leaving the UI "recording" forever.
+  if (state.recording || state.recognizing || state.starting) return;
+  state.starting = true;
   hideError();
+  els.btnStart.disabled = true; // close the double-click window immediately
 
-  if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
-    clientError("当前浏览器不支持麦克风采集，请使用最新版 Chrome 或 Edge 通过 http://127.0.0.1:8000 访问。");
-    return;
-  }
-
-  let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    });
-  } catch (err) {
-    showError(describeMicError(err));
-    setBadge("error", "录音失败");
-    return;
-  }
-
-  const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
-  try {
-    await ctx.resume();
-  } catch (_) { /* already running */ }
-
-  const source = ctx.createMediaStreamSource(stream);
-  let node;
-  let usingWorklet = false;
-  try {
-    await ctx.audioWorklet.addModule("/static/recorder-worklet.js");
-    node = new AudioWorkletNode(ctx, "pcm-recorder", { numberOfOutputs: 1 });
-    node.port.onmessage = (e) => onPcmChunk(e.data);
-    usingWorklet = true;
-  } catch (_) {
-    // Fallback for browsers without AudioWorklet
-    node = ctx.createScriptProcessor(4096, 1, 1);
-    node.onaudioprocess = (e) => onPcmChunk(new Float32Array(e.inputBuffer.getChannelData(0)));
-  }
-  // Chrome only pulls nodes connected to the destination; route through a
-  // zero-gain node to keep the graph alive without echoing the mic.
-  const mute = ctx.createGain();
-  mute.gain.value = 0;
-  source.connect(node);
-  node.connect(mute);
-  mute.connect(ctx.destination);
-
-  Object.assign(state, {
-    recording: true,
-    audioCtx: ctx,
-    mediaStream: stream,
-    workletNode: node,
-    sourceNode: source,
-    muteNode: mute,
-    usingWorklet,
-    chunks: [],
-    totalSamples: 0,
-  });
-
-  setBadge("recording", "录音中");
-  setMicStatus("录音中", "recording");
-  // fresh session: clear the previous result so stale text can't be mistaken
-  // for this recording's outcome
-  els.resultText.value = "";
-  els.resultText.placeholder = "识别文本将显示在这里…";
-  els.metaLanguage.textContent = "-";
-  els.metaDuration.textContent = "-";
-  els.metaProcessing.textContent = "-";
-  els.copyHint.textContent = "";
-  els.btnCopy.disabled = true;
-  els.btnStart.disabled = true;
-  els.btnStop.disabled = false;
-  els.btnUpload.disabled = true;
-
-  state.timerInterval = setInterval(() => {
-    const seconds = state.totalSamples / SAMPLE_RATE;
-    els.recordTimer.textContent = `${fmtClock(seconds)} / 00:60`;
-    if (seconds >= MAX_SECONDS) {
-      stopRecording(true);
+    if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
+      clientError("当前浏览器不支持麦克风采集，请使用最新版 Chrome 或 Edge 通过 http://127.0.0.1:8000 访问。");
+      return;
     }
-  }, 100);
 
-  state.realtimeInterval = setInterval(recognizePartial, REALTIME_INTERVAL_MS);
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+    } catch (err) {
+      clientError(describeMicError(err));
+      setBadge("error", "录音失败");
+      return;
+    }
+
+    const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
+    try {
+      await ctx.resume();
+    } catch (_) { /* already running */ }
+
+    const source = ctx.createMediaStreamSource(stream);
+    let node;
+    let usingWorklet = false;
+    try {
+      await ctx.audioWorklet.addModule("/static/recorder-worklet.js");
+      node = new AudioWorkletNode(ctx, "pcm-recorder", { numberOfOutputs: 1 });
+      node.port.onmessage = (e) => onPcmChunk(e.data);
+      usingWorklet = true;
+    } catch (_) {
+      // Fallback for browsers without AudioWorklet
+      node = ctx.createScriptProcessor(4096, 1, 1);
+      node.onaudioprocess = (e) => onPcmChunk(new Float32Array(e.inputBuffer.getChannelData(0)));
+    }
+    // Chrome only pulls nodes connected to the destination; route through a
+    // zero-gain node to keep the graph alive without echoing the mic.
+    const mute = ctx.createGain();
+    mute.gain.value = 0;
+    source.connect(node);
+    node.connect(mute);
+    mute.connect(ctx.destination);
+
+    Object.assign(state, {
+      recording: true,
+      audioCtx: ctx,
+      mediaStream: stream,
+      workletNode: node,
+      sourceNode: source,
+      muteNode: mute,
+      usingWorklet,
+      chunks: [],
+      totalSamples: 0,
+    });
+
+    setBadge("recording", "录音中");
+    setMicStatus("录音中", "recording");
+    // fresh session: clear the previous result so stale text can't be mistaken
+    // for this recording's outcome
+    els.resultText.value = "";
+    els.resultText.placeholder = "识别文本将显示在这里…";
+    els.metaLanguage.textContent = "-";
+    els.metaDuration.textContent = "-";
+    els.metaProcessing.textContent = "-";
+    els.copyHint.textContent = "";
+    els.btnCopy.disabled = true;
+    els.btnStart.disabled = true;
+    els.btnStop.disabled = false;
+    els.btnUpload.disabled = true;
+
+    // defensive: never stack intervals on top of a stale session
+    if (state.timerInterval) clearInterval(state.timerInterval);
+    if (state.realtimeInterval) clearInterval(state.realtimeInterval);
+    state.timerInterval = setInterval(() => {
+      const seconds = state.totalSamples / SAMPLE_RATE;
+      els.recordTimer.textContent = `${fmtClock(seconds)} / 00:60`;
+      if (seconds >= MAX_SECONDS) {
+        stopRecording(true);
+      }
+    }, 100);
+
+    state.realtimeInterval = setInterval(recognizePartial, REALTIME_INTERVAL_MS);
+  } finally {
+    state.starting = false;
+  }
 }
 
 async function stopRecording(auto = false) {
