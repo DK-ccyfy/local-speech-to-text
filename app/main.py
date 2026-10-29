@@ -72,6 +72,15 @@ def create_app(asr_service: ASRService | None = None) -> FastAPI:
 
     app = FastAPI(title="Local Speech-to-Text", lifespan=lifespan)
     app.state.asr = asr_service or WhisperASRService()
+
+    @app.middleware("http")
+    async def revalidate_static(request, call_next):
+        """no-cache = always revalidate with ETag (cheap 304s, never stale JS/CSS)."""
+        response = await call_next(request)
+        if request.url.path == "/" or request.url.path.startswith("/static"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.get("/health")
