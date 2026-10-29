@@ -34,6 +34,34 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 浏览器访问 <http://127.0.0.1:8000>（localhost 属于安全上下文，可直接使用麦克风）。
 
+### Windows 全新机器快速上手（从下载仓库到能用的完整步骤）
+
+1. **安装 Python 3.12**：从 [python.org](https://www.python.org/downloads/) 下载安装，勾选 **"Add python.exe to PATH"**；装完在 cmd 执行 `python --version` 确认输出 3.12.x；
+2. **创建虚拟环境**：在项目根目录执行 `python -m venv .venv`；
+3. **激活（三选一）**：
+   - cmd：`.venv\Scripts\activate.bat`
+   - PowerShell：`.venv\Scripts\Activate.ps1`（若提示执行策略限制，可先执行 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`，或改用下一种）
+   - **不激活**：后续所有命令把 `python` 换成 `.venv\Scripts\python` 即可；
+4. **安装依赖**：`python -m pip install -r requirements.txt`（全部为 wheel 包，无需编译器）；
+5. **（国内网络强烈建议）配置模型下载镜像**，否则首次下载可能超时：
+
+   ```powershell
+   # PowerShell
+   $env:HF_ENDPOINT = "https://hf-mirror.com"
+   $env:HF_HUB_DISABLE_XET = "1"
+   ```
+
+   ```bat
+   rem cmd
+   set HF_ENDPOINT=https://hf-mirror.com
+   set HF_HUB_DISABLE_XET=1
+   ```
+
+   两个变量都要设：前者走镜像，后者禁用新版 Xet 下载协议（镜像对该协议返回 401）；
+6. **启动**：`python -m uvicorn app.main:app --host 127.0.0.1 --port 8000` → 浏览器访问 <http://127.0.0.1:8000>。
+
+> Windows 首次启动若弹出防火墙询问，允许即可（服务只绑定本机 127.0.0.1，不对外网开放）。
+
 ### 模型初始化（首次运行）
 
 - 服务启动后会在后台自动下载并加载 faster-whisper `small` 模型（约 **460 MB**，来自 HuggingFace，缓存于用户目录，不进仓库）；
@@ -46,7 +74,7 @@ python -m scripts.download_model
 ```
 
 - **模型缓存完成后即可断网识别**（首次下载是唯一需要联网的步骤）；
-- 网络较慢时可使用 HF 镜像：`export HF_ENDPOINT=https://hf-mirror.com`（Windows 用 `set`）。
+- 网络较慢时可使用 HF 镜像（`HF_ENDPOINT` + `HF_HUB_DISABLE_XET` 两个变量，设置方法见上文「Windows 全新机器快速上手」第 5 步）。
 
 ### 配置项（环境变量，均有默认值，无需设置）
 
