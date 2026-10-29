@@ -1,0 +1,15 @@
+# Web framework
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+
+# Local ASR model (CPU, offline after first download)
+faster-whisper>=1.0.0
+
+# Audio decoding (PyAV bundles FFmpeg libs as wheels, no system FFmpeg needed)
+av>=11.0
+numpy>=1.26
+
+# Testing
+pytest>=8.0
+httpx>=0.27

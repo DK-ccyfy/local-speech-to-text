@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Model weights / caches if downloaded locally into the repo
+*.bin
+*.onnx
+models/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Build artifacts
+*.egg-info/
+build/
+dist/
